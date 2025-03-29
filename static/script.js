@@ -71,101 +71,109 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Form submissions with simulated responses
   
-  // Crop Prediction Form
-  const cropForm = document.getElementById('crop-prediction-form');
-  if (cropForm) {
-    cropForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      // Simulate loading
-      const submitBtn = this.querySelector('button[type="submit"]');
-      const originalText = submitBtn.innerHTML;
-      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing...';
-      submitBtn.disabled = true;
-      
-      // Simulate API call with delay
-      setTimeout(function() {
-        const resultDiv = document.getElementById('crop-result');
-        const recommendationsList = document.getElementById('crop-recommendations');
-        
-        // Clear previous results
-        recommendationsList.innerHTML = '';
-        
-        // Sample crops based on inputs (in a real app, this would come from an API)
-        const sampleCrops = [
-          'Rice',
-          'Wheat',
-          'Maize',
-          'Cotton',
-          'Sugarcane'
-        ];
-        
-        // Select random 3 crops for demo
-        const selectedCrops = sampleCrops.sort(() => 0.5 - Math.random()).slice(0, 3);
-        
-        // Add recommendations to list
-        selectedCrops.forEach(crop => {
-          const li = document.createElement('li');
-          li.textContent = crop;
-          recommendationsList.appendChild(li);
-        });
-        
-        // Show results
-        resultDiv.classList.remove('d-none');
-        
-        // Reset button
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-        
-        // Scroll to results
-        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 1500);
-    });
-  }
+  document.getElementById("crop-prediction-form").addEventListener("submit", async function (event) {
+    event.preventDefault(); // Prevent page refresh
 
-  // Fertilizer Prediction Form
-  const fertilizerForm = document.getElementById('fertilizer-prediction-form');
-  if (fertilizerForm) {
-    fertilizerForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      // Simulate loading
-      const submitBtn = this.querySelector('button[type="submit"]');
-      const originalText = submitBtn.innerHTML;
-      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing...';
-      submitBtn.disabled = true;
-      
-      // Simulate API call with delay
-      setTimeout(function() {
-        const resultDiv = document.getElementById('fertilizer-result');
-        const recommendation = document.getElementById('fertilizer-recommendation');
-        
-        // Get crop type for personalized message
-        const cropType = document.getElementById('crop-type').value;
-        
-        // Sample fertilizer recommendations (in a real app, this would come from an API)
-        const recommendations = [
-          `Based on your soil analysis, we recommend using NPK 14-7-14 fertilizer for optimal ${cropType} growth. Apply 250 kg/ha in split doses.`,
-          `Your soil shows nitrogen deficiency. We recommend using Urea (46-0-0) at 100 kg/ha to maximize ${cropType} yield.`,
-          `For your ${cropType} crop, we recommend a balanced approach with NPK 20-10-10 fertilizer applied at 200 kg/ha, followed by micronutrient spray.`
-        ];
-        
-        // Select random recommendation for demo
-        const selectedRecommendation = recommendations[Math.floor(Math.random() * recommendations.length)];
-        recommendation.textContent = selectedRecommendation;
-        
-        // Show results
-        resultDiv.classList.remove('d-none');
-        
-        // Reset button
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-        
-        // Scroll to results
-        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 1500);
+    // Collect input values
+    const data = {
+        N: parseFloat(document.getElementById("nitrogen").value),
+        P: parseFloat(document.getElementById("phosphorous").value),
+        K: parseFloat(document.getElementById("potassium").value),
+        pH: parseFloat(document.getElementById("pH").value),
+        rainfall: parseFloat(document.getElementById("rainfall").value),
+        temperature: parseFloat(document.getElementById("temperature").value),
+        humidity: parseFloat(document.getElementById("humidity").value)
+    };
+
+try {
+    console.log("Sending request:", data); // Debugging
+
+    // Send request to Flask backend
+    const response = await fetch("/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
     });
-  }
+
+    if (!response.ok) {
+        // Try to extract error message from response body
+        let errorMessage = `HTTP error! Status: ${response.status}`;
+        try {
+            const errorResponse = await response.json();
+            errorMessage += ` - ${errorResponse.message || JSON.stringify(errorResponse)}`;
+        } catch (jsonError) {
+            console.warn("Could not parse error response JSON");
+        }
+        throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log("Received response:", result); // Debugging
+
+    let crops = result.top_5_crops || result.recommendations;
+    if (crops && crops.length > 0) {
+        let dropdown = document.getElementById("crop-dropdown");
+        dropdown.innerHTML = ""; // Clear previous options
+
+        crops.forEach(crop => {
+            let option = document.createElement("option");
+            if (result.top_5_crops) {
+                option.value = crop.crop;
+                option.textContent = `${crop.crop} (${crop.probability}%)`;
+            } else {
+                option.value = crop;
+                option.textContent = crop;
+            }
+            dropdown.appendChild(option);
+        });
+
+        document.getElementById("crop-selection-section").classList.remove("hidden"); // Show dropdown
+        document.getElementById("crop-selection").style.display = "block";
+    } else {
+        alert("No crops recommended. Try different inputs.");
+    }
+} catch (error) {
+    console.error("Error fetching crop recommendations:", error);
+    alert(error.message);
+}
+});
+
+document.getElementById("get-fertilizer-btn").addEventListener("click", async function () {
+    let selectedCrop = document.getElementById("crop-dropdown").value;
+
+    if (!selectedCrop) {
+        alert("Please select a crop first.");
+        return;
+    }
+
+    try {
+        const response = await fetch("/fertilizer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                crop: selectedCrop,
+                N: parseFloat(document.getElementById("nitrogen").value),
+                P: parseFloat(document.getElementById("phosphorous").value),
+                K: parseFloat(document.getElementById("potassium").value)
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        document.getElementById("fertilizer-advice").textContent = result.fertilizer_advice;
+        document.getElementById("fertilizer-advice-section").classList.remove("hidden"); // Show advice
+    } catch (error) {
+        console.error("Error fetching fertilizer advice:", error);
+        alert("Failed to fetch fertilizer advice. Please check your server.");
+    }
+});
+
+
+
+  
 
   // Disease Prediction Form
   const diseaseForm = document.getElementById('disease-prediction-form');
